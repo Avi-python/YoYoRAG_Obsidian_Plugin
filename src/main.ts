@@ -28,7 +28,50 @@ export default class MyPlugin extends Plugin {
 
 		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
 		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
+		statusBarItemEl.setText('Status Bar Text');
+
+		this.addCommand({
+            id: 'ask-rag-system',
+            name: 'Ask YoYoRAG',
+            callback: () => {
+                new QueryModal(this.app, async (query) => {
+                    if (!query) return;
+
+                    new Notice('正在向您的 RAG 系統提問...');
+
+                    try {
+                        const response = await fetch('http://localhost:8000/query', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+								'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+                            },
+                            body: JSON.stringify({ query: query }),
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`API 請求失敗: ${response.statusText}`);
+                        }
+
+                        const data = await response.json();
+
+                        // 將答案插入到當前筆記中
+                        const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+                        if (editor) {
+                            const formattedAnswer = `\n\n---\n**問題:** ${query}\n\n**答案:** ${data.answer}\n\n**參考資料:**\n${data.sources.map((s: any) => `- ${s}`).join('\n')}\n---\n`;
+                            editor.replaceSelection(formattedAnswer);
+                        } else {
+                            new Notice("沒有活動的編輯器可供插入答案。");
+                        }
+
+                    } catch (error) {
+                        console.error("RAG Plugin Error:", error);
+                        new Notice(`錯誤: ${error.message}`, 5000);
+                    }
+                }).open();
+            }
+		});
 
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
@@ -100,6 +143,40 @@ export default class MyPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 }
+
+// 用於顯示輸入框的 Modal
+class QueryModal extends Modal {
+    query: string;
+    onSubmit: (query: string) => void;
+
+    constructor(app: App, onSubmit: (query: string) => void) {
+        super(app);
+        this.onSubmit = onSubmit;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.createEl("h2", { text: "詢問您的筆記" });
+
+        const input = contentEl.createEl("input", { type: "text" });
+        input.style.width = "100%";
+        input.placeholder = "輸入您的問題...";
+
+        input.addEventListener("keydown", (evt) => {
+            if (evt.key === "Enter") {
+                this.query = input.value;
+                this.close();
+                this.onSubmit(this.query);
+            }
+        });
+    }
+
+    onClose() {
+        let { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
 
 class SampleModal extends Modal {
 	onOpen() {
