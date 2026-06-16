@@ -1,18 +1,16 @@
-import {
-	Editor,
-	MarkdownView,
-	MarkdownFileInfo,
-	Modal,
-	Notice,
-	Plugin,
-} from 'obsidian';
-import {
-	DEFAULT_SETTINGS,
-	MyPluginSettings,
-	SampleSettingTab,
-} from './settings';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, requestUrl } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
+
+interface MyPluginSettings {
+	mySetting: string;
+	apiUrl: string;
+}
+
+const DEFAULT_SETTINGS: MyPluginSettings = {
+	mySetting: 'default',
+	apiUrl: 'http://localhost:8000/query'
+}
 
 export default class MyPlugin extends Plugin {
 	settings!: MyPluginSettings;
@@ -20,10 +18,49 @@ export default class MyPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
+		const query = () => {
+			new QueryModal(this.app, async (query) => {
+				if (!query) return;
+		
+				new Notice('正在向您的 RAG 系統提問...');
+		
+				try {
+					const response = await requestUrl({
+						url: this.settings.apiUrl,
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+						},
+						body: JSON.stringify({ query: query }),
+					});
+		
+					if (!response.status || response.status < 200 || response.status >= 300) {
+						throw new Error(`API 請求失敗: ${response.status} ${response.text}`);
+					}
+		
+					const data = await response.json;
+		
+					// 將答案插入到當前筆記中
+					const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+					if (editor) {
+						const formattedAnswer = `\n\n---\n**問題:** ${query}\n\n**答案:** ${data.answer}\n\n**參考資料:**\n${data.sources.map((s: any) => `- ${s}`).join('\n')}\n---\n`;
+						editor.replaceSelection(formattedAnswer);
+					} else {
+						new Notice("沒有活動的編輯器可供插入答案。");
+					}
+		
+				} catch (error) {
+					console.error("RAG Plugin Error:", error);
+					new Notice(`錯誤: ${error.message}`, 5000);
+				}
+			}).open();
+		}
+
 		// This creates an icon in the left ribbon.
 		this.addRibbonIcon('dice', 'Sample', (_evt: MouseEvent) => {
 			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+			query();
 		});
 
 		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
@@ -33,44 +70,7 @@ export default class MyPlugin extends Plugin {
 		this.addCommand({
             id: 'ask-rag-system',
             name: 'Ask YoYoRAG',
-            callback: () => {
-                new QueryModal(this.app, async (query) => {
-                    if (!query) return;
-
-                    new Notice('正在向您的 RAG 系統提問...');
-
-                    try {
-                        const response = await fetch('http://localhost:8000/query', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-								'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
-                            },
-                            body: JSON.stringify({ query: query }),
-                        });
-
-                        if (!response.ok) {
-                            throw new Error(`API 請求失敗: ${response.statusText}`);
-                        }
-
-                        const data = await response.json();
-
-                        // 將答案插入到當前筆記中
-                        const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
-                        if (editor) {
-                            const formattedAnswer = `\n\n---\n**問題:** ${query}\n\n**答案:** ${data.answer}\n\n**參考資料:**\n${data.sources.map((s: any) => `- ${s}`).join('\n')}\n---\n`;
-                            editor.replaceSelection(formattedAnswer);
-                        } else {
-                            new Notice("沒有活動的編輯器可供插入答案。");
-                        }
-
-                    } catch (error) {
-                        console.error("RAG Plugin Error:", error);
-                        new Notice(`錯誤: ${error.message}`, 5000);
-                    }
-                }).open();
-            }
+            callback: query
 		});
 
 		// This adds a simple command that can be triggered anywhere
@@ -187,5 +187,42 @@ class SampleModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
+	}
+}
+
+class SampleSettingTab extends PluginSettingTab {
+	plugin: MyPlugin;
+
+	constructor(app: App, plugin: MyPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const {containerEl} = this;
+
+		containerEl.empty();
+
+		new Setting(containerEl)
+			.setName('RAG API Endpoint')
+			.setDesc('Enter the URL of your RAG API system')
+			.addText(text => text
+				.setPlaceholder('http://localhost:8000/query')
+				.setValue(this.plugin.settings.apiUrl)
+				.onChange(async (value) => {
+					this.plugin.settings.apiUrl = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Setting #1')
+			.setDesc('It\'s a secret')
+			.addText(text => text
+				.setPlaceholder('Enter your secret')
+				.setValue(this.plugin.settings.mySetting)
+				.onChange(async (value) => {
+					this.plugin.settings.mySetting = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 }
