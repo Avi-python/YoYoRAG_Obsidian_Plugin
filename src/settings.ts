@@ -2,12 +2,14 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import MyPlugin from './main';
 
 export interface MyPluginSettings {
-	mySetting: string;
+	apiUrl: string;
+	historyFilePath: string;
 }
 
 export const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default',
-};
+	apiUrl: 'http://localhost:8000/query',
+	historyFilePath: 'RAG-History.md'
+}
 
 export class SampleSettingTab extends PluginSettingTab {
 	plugin: MyPlugin;
@@ -18,21 +20,19 @@ export class SampleSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const { containerEl } = this;
+		const {containerEl} = this;
 
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Settings #1')
-			.setDesc("It's a secret")
-			.addText((text) =>
-				text
-					.setPlaceholder('Enter your secret')
-					.setValue(this.plugin.settings.mySetting)
-					.onChange(async (value) => {
-						this.plugin.settings.mySetting = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+			.setName('RAG API Endpoint')
+			.setDesc('Enter the URL of your RAG API system')
+			.addText(text => text
+				.setPlaceholder('http://localhost:8000/query')
+				.setValue(this.plugin.settings.apiUrl)
+				.onChange(async (value) => {
+					this.plugin.settings.apiUrl = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 }
