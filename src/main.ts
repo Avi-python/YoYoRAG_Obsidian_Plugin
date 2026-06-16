@@ -86,7 +86,7 @@ export default class MyPlugin extends Plugin {
 
 	async saveHistory(query: string, answer: string, sources: string[]) {
         const filePath = this.settings.historyFilePath;
-        const historyEntry = `\n\n---\n**時間:** ${new Date().toLocaleString()}\n**問題:** ${query}\n**答案:** ${answer}\n**參考資料:**\n${sources.map((s: any) => `- ${s}`).join('\n')}\n---\n`;
+        const historyEntry = `\n\n---\n**時間:** ${new Date().toLocaleString()}\n**問題:** ${query}\n**答案:** ${answer}\n**參考資料:**\n${sources.map((s: any) => `- [[${s}]]`).join('\n')}\n---\n`;
         
         const file = this.app.vault.getAbstractFileByPath(filePath);
         if (file) {
@@ -175,7 +175,17 @@ class AnswerModal extends Modal {
             contentEl.createEl("h4", { text: "參考資料:" });
             const ul = contentEl.createEl("ul");
             this.sources.forEach(source => {
-                ul.createEl("li", { text: "[[" + source + "]]"});
+                const li = ul.createEl("li");
+				const link = li.createEl("a", {
+					cls: "internal-link",
+					text: source
+				});
+				// Add click listener to open the note
+                link.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    this.app.workspace.openLinkText(source, "", true); 
+                    this.close();
+                });
             });
         }
     }
